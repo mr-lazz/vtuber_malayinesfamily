@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Avatar Mic Reactivo - OBS</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: transparent; /* OBS Browser Source respeta transparencia */
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+  }
+
+  #avatar-container {
+    position: relative;
+    width: 1280px;   /* tamaño real de boca_cerrada.png / boca_abierta.png */
+    height: 720px;
+  }
+
+  #avatar-container img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: none;
+  }
+
+  #avatar-container img.active {
+    display: block;
+  }
+
+  /* Mensaje de ayuda visible solo si el navegador pide permiso o falla */
+  #status {
+    position: fixed;
+    bottom: 5px;
+    left: 5px;
+    color: #ff5555;
+    font-family: sans-serif;
+    font-size: 12px;
+    background: rgba(0,0,0,0.5);
+    padding: 4px 8px;
+    border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+
+<div id="avatar-container">
+  <!-- Reemplaza estos archivos por los tuyos. Deben estar en la misma carpeta que este HTML -->
+  <img id="mouth-closed" src="boca_cerrada.png" class="active" alt="boca cerrada" style="object-fit: contain;">
+  <img id="mouth-open" src="boca_abierta.png" alt="boca abierta" style="object-fit: contain;">
+</div>
+
+<div id="status"></div>
+
+<script>
+// ==========================================================
+// CONFIGURACIÓN
+// ==========================================================
+const UMBRAL_VOLUMEN = 12;      // Sensibilidad: más bajo = más sensible a hablar bajito
+const SUAVIZADO = 0.6;          // 0-1, cuánto se "alisa" el volumen (evita parpadeo)
+const CIERRE_DELAY_MS = 120;    // Espera antes de cerrar la boca tras dejar de hablar
+// ==========================================================
+
+const mouthClosed = document.getElementById('mouth-closed');
+const mouthOpen = document.getElementById('mouth-open');
+const status = document.getElementById('status');
+
+let smoothedVolume = 0;
+let closeTimer = null;
+
+function setMouth(isOpen) {
+  if (isOpen) {
+    mouthOpen.classList.add('active');
+    mouthClosed.classList.remove('active');
+  } else {
+    mouthClosed.classList.add('active');
+    mouthOpen.classList.remove('active');
+  }
+}
+
+async function iniciarAudio() {
+  try {
+    // Puedes fijar un micrófono específico agregando { deviceId: {...} } si tienes varios
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = audioCtx.createMediaStreamSource(stream);
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 512;
+    source.connect(analyser);
+
+    const data = new Uint8Array(analyser.frequencyBinCount);
+
+    function loop() {
+      analyser.getByteFrequencyData(data);
+      let sum = 0;
+      for (let i = 0; i < data.length; i++) sum += data[i];
+      const volume = sum / data.length;
+
+      smoothedVolume = smoothedVolume * SUAVIZADO + volume * (1 - SUAVIZADO);
+
+      if (smoothedVolume > UMBRAL_VOLUMEN) {
+        if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
+        setMouth(true);
+      } else if (!closeTimer) {
+        closeTimer = setTimeout(() => { setMouth(false); closeTimer = null; }, CIERRE_DELAY_MS);
+      }
+
+      requestAnimationFrame(loop);
+    }
+    loop();
+    status.textContent = '';
+  } catch (err) {
+    status.textContent = 'No se pudo acceder al micrófono: ' + err.message;
+    console.error(err);
+  }
+}
+
+iniciarAudio();
+</script>
+
+</body>
+</html>
