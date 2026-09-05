@@ -24,11 +24,10 @@
     width: 100%;
     height: 100%;
     object-fit: contain;
-    opacity: 0;
-    will-change: opacity;
+    display: none;
   }
   #avatar-container img.active {
-    opacity: 1;
+    display: block;
   }
   /* Mensaje de ayuda visible solo si el navegador pide permiso o falla */
   #status {
@@ -65,11 +64,8 @@ const mouthOpen = document.getElementById('mouth-open');
 const status = document.getElementById('status');
 let smoothedVolume = 0;
 let closeTimer = null;
-let mouthIsOpen = false;
 
 function setMouth(isOpen) {
-  if (isOpen === mouthIsOpen) return; // evita tocar el DOM si no hay cambio real
-  mouthIsOpen = isOpen;
   if (isOpen) {
     mouthOpen.classList.add('active');
     mouthClosed.classList.remove('active');
