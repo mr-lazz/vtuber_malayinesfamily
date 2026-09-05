@@ -12,26 +12,24 @@
     width: 100%;
     height: 100%;
   }
-
   #avatar-container {
     position: relative;
-    width: 1280px;   /* tamaño real de boca_cerrada.png / boca_abierta.png */
-    height: 720px;
+    width: 400px;   /* iguala esto a la Resolución personalizada en Live Studio */
+    height: 400px;
   }
-
   #avatar-container img {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    display: none;
+    object-fit: contain;
+    opacity: 0;
+    will-change: opacity;
   }
-
   #avatar-container img.active {
-    display: block;
+    opacity: 1;
   }
-
   /* Mensaje de ayuda visible solo si el navegador pide permiso o falla */
   #status {
     position: fixed;
@@ -47,15 +45,12 @@
 </style>
 </head>
 <body>
-
 <div id="avatar-container">
   <!-- Reemplaza estos archivos por los tuyos. Deben estar en la misma carpeta que este HTML -->
-  <img id="mouth-closed" src="boca_cerrada.png" class="active" alt="boca cerrada" style="object-fit: contain;">
-  <img id="mouth-open" src="boca_abierta.png" alt="boca abierta" style="object-fit: contain;">
+  <img id="mouth-closed" src="boca_cerrada.png" class="active" alt="boca cerrada">
+  <img id="mouth-open" src="boca_abierta.png" alt="boca abierta">
 </div>
-
 <div id="status"></div>
-
 <script>
 // ==========================================================
 // CONFIGURACIÓN
@@ -63,16 +58,18 @@
 const UMBRAL_VOLUMEN = 12;      // Sensibilidad: más bajo = más sensible a hablar bajito
 const SUAVIZADO = 0.6;          // 0-1, cuánto se "alisa" el volumen (evita parpadeo)
 const CIERRE_DELAY_MS = 120;    // Espera antes de cerrar la boca tras dejar de hablar
+const INTERVALO_ANALISIS_MS = 60; // ~16 veces por segundo, suficiente para un toggle de boca
 // ==========================================================
-
 const mouthClosed = document.getElementById('mouth-closed');
 const mouthOpen = document.getElementById('mouth-open');
 const status = document.getElementById('status');
-
 let smoothedVolume = 0;
 let closeTimer = null;
+let mouthIsOpen = false;
 
 function setMouth(isOpen) {
+  if (isOpen === mouthIsOpen) return; // evita tocar el DOM si no hay cambio real
+  mouthIsOpen = isOpen;
   if (isOpen) {
     mouthOpen.classList.add('active');
     mouthClosed.classList.remove('active');
@@ -89,38 +86,32 @@ async function iniciarAudio() {
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const source = audioCtx.createMediaStreamSource(stream);
     const analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 512;
+    analyser.fftSize = 32; // antes 512 — solo necesitamos un volumen promedio, no detalle de frecuencia
     source.connect(analyser);
-
     const data = new Uint8Array(analyser.frequencyBinCount);
 
-    function loop() {
+    function tick() {
       analyser.getByteFrequencyData(data);
       let sum = 0;
       for (let i = 0; i < data.length; i++) sum += data[i];
       const volume = sum / data.length;
-
       smoothedVolume = smoothedVolume * SUAVIZADO + volume * (1 - SUAVIZADO);
-
       if (smoothedVolume > UMBRAL_VOLUMEN) {
         if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
         setMouth(true);
       } else if (!closeTimer) {
         closeTimer = setTimeout(() => { setMouth(false); closeTimer = null; }, CIERRE_DELAY_MS);
       }
-
-      requestAnimationFrame(loop);
     }
-    loop();
+
+    setInterval(tick, INTERVALO_ANALISIS_MS); // antes requestAnimationFrame (hasta 60/seg)
     status.textContent = '';
   } catch (err) {
     status.textContent = 'No se pudo acceder al micrófono: ' + err.message;
     console.error(err);
   }
 }
-
 iniciarAudio();
 </script>
-
 </body>
 </html>
